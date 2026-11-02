@@ -36,9 +36,10 @@ namespace RevitMCP.Commands
                     // 未執行 → 啟動
                     Logger.Info("使用者手動啟動 MCP 服務");
                     Application.StartMCPService(commandData.Application);
+                    // JW 本機修改（2026-10-26）：顯示實際的 port（多個 Revit 時不一定是 8964）
                     TaskDialog.Show("MCP 服務",
                         "🟢 MCP 服務已啟動。\n\n" +
-                        "正在 localhost:8964 監聽，等待 AI 客戶端連入。\n" +
+                        $"正在 localhost:{Application.ActivePort} 監聽，等待 AI 客戶端連入。\n" +
                         "（連上後可在「MCP 設定」查看目前佔用連線的客戶端）");
                 }
 
@@ -72,7 +73,10 @@ namespace RevitMCP.Commands
                 var settings = Configuration.ConfigManager.Instance.Settings;
                 string info = $"目前設定:\n\n" +
                     $"主機: {settings.Host}\n" +
-                    $"埠號: {settings.Port}\n" +
+                    // JW 本機修改（2026-10-26）：服務開著就顯示實際的 port，關著顯示起始 port
+                    (Application.ActivePort > 0
+                        ? $"埠號: {Application.ActivePort}（這個 Revit 實際使用）\n"
+                        : $"埠號: {settings.Port} 起找第一個空的（服務未啟動）\n") +
                     $"服務狀態: {(settings.IsEnabled ? "啟用" : "停用")}\n\n" +
                     $"配置檔位置:\n" +
                     $"{Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)}\\RevitMCP\\config.json";

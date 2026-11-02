@@ -89,9 +89,13 @@ namespace RevitMCP
                 toggleButtonData.ToolTip = $"MCP 服務：關閉\r\n點擊啟動（port {configuredPort}）";
                 toggleButtonData.LargeImage = GetToggleIcon(false);
                 ToggleButton = panel.AddItem(toggleButtonData) as PushButton;
-                _toggleIconRunning = false;   // 服務不會自動啟動（沒有 AutoStart 設定），開機狀態一定是關
+                _toggleIconRunning = false;   // 載入當下一定是關；自動啟動在 ApplicationInitialized 才跑，跑完會校正圖示
                 // ribbon 圖示的 Idling 讀回校正，見 RequestToggleButtonIconRefresh() 的註解。
                 application.Idling += OnToggleIconIdling;
+                // JW 本機修改（2026-10-26）：開 Revit 自動啟動 MCP 服務，見 OnApplicationInitializedAutoStart。
+                application.ControlledApplication.ApplicationInitialized += OnApplicationInitializedAutoStart;
+                // JW 本機修改（2026-10-26）：JW 外掛的使用紀錄（錄音機），跟 MCP 服務開不開無關，見 Core/UsageRecorder.cs
+                UsageRecorder.Install(application);
 
                 // 2. 開啟日誌按鈕
                 PushButtonData logButtonData = new PushButtonData(
@@ -171,12 +175,10 @@ namespace RevitMCP
                 // 避免 HTTP.sys 孤兒 Request Queue 佔住 port。
                 AppDomain.CurrentDomain.ProcessExit += (s, e) => EmergencyStopSocket();
 
+                // JW 本機修改（2026-10-26）：拿掉「已載入，請點擊按鈕」的提示視窗——服務改成自動啟動，
+                // 狀態看 ribbon 按鈕圖示；只有啟動失敗才跳視窗（StartMCPService／SocketService 原本的錯誤處理）。
                 Logger.Info("RevitMCP Plugin 已成功載入");
 
-                TaskDialog.Show("RevitMCP", 
-                    "RevitMCP Plugin 已載入\n\n" +
-                    "請點擊「MCP 服務 (開/關)」按鈕來啟用 AI 控制功能");
-                
                 return Result.Succeeded;
             }
             catch (Exception ex)
@@ -199,6 +201,8 @@ namespace RevitMCP
                     application.ViewActivated -= OnCameraManagerViewActivated;
                     application.Idling -= OnCameraManagerIdling;
                     application.Idling -= OnToggleIconIdling;
+                    application.ControlledApplication.ApplicationInitialized -= OnApplicationInitializedAutoStart;
+                    UsageRecorder.Uninstall(application);
                     application.ControlledApplication.DocumentClosing -= OnCameraManagerDocumentClosing;
                     application.ControlledApplication.DocumentOpened -= OnCameraManagerDocumentOpened;
                     application.ControlledApplication.DocumentSavingAs -= OnCameraManagerDocumentSavingAs;
@@ -637,9 +641,10 @@ namespace RevitMCP
                 int port = ConfigManager.Instance.Settings.Port;
                 BitmapImage icon = GetToggleIcon(running);
                 if (icon != null) button.LargeImage = icon;
+                // JW 本機修改（2026-10-26）：顯示這個 Revit 實際用的 port（多個 Revit 時各自不同）
                 button.ToolTip = running
-                    ? $"MCP 服務：開啟\r\n監聽中（port {port}）\r\n點擊停止"
-                    : $"MCP 服務：關閉\r\n點擊啟動（port {port}）";
+                    ? $"MCP 服務：開啟\r\n監聽中（port {ActivePort}）\r\n點擊停止"
+                    : $"MCP 服務：關閉\r\n點擊啟動（從 port {port} 起找第一個空的）";
                 _toggleIconRunning = running;
             }
             catch (Exception ex)
@@ -929,11 +934,93 @@ namespace RevitMCP
                     _socketService.Stop();
                     _socketService = null;
                 }
+                ActivePort = 0;
             }
             catch (Exception ex)
             {
                 Logger.Error($"EmergencyStopSocket failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// JW 本機修改（2026-10-26，上游沒有這個功能）：開 Revit 自動啟動 MCP 服務。
+        /// 掛在 ApplicationInitialized：Revit 完全啟動後觸發一次，首頁沒開專案也會跑；
+        /// 這時還沒有 ExternalCommandData，所以用 sender（DB 的 Application）自己建 UIApplication。
+        /// 用哪個 port 由 StartMCPService 決定（從設定的 port 往上找第一個空的），
+        /// 所以同時開好幾個 Revit 時每個都會啟動，不會再因為 8964 被佔用而跳過。
+        /// </summary>
+        private static void OnApplicationInitializedAutoStart(object sender, ApplicationInitializedEventArgs e)
+        {
+            try
+            {
+                var revitApp = sender as Autodesk.Revit.ApplicationServices.Application;
+                if (revitApp == null)
+                {
+                    Logger.Error("自動啟動 MCP 服務失敗：拿不到 Revit Application");
+                    return;
+                }
+
+                Logger.Info("開 Revit 自動啟動 MCP 服務");
+                StartMCPService(new UIApplication(revitApp));
+                RequestToggleButtonIconRefresh();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("自動啟動 MCP 服務失敗", ex);
+            }
+        }
+
+        /// <summary>
+        /// JW 本機修改（2026-10-26）：同一台電腦可能同時開好幾個 Revit（不同版本，或同版本多開）。
+        /// 每個 Revit 從設定的 port（預設 8964）往上找第一個空的，最多找 PortSearchCount 個；
+        /// MCP Server 端的 list_revit_instances 掃同一個範圍（MCP-Server/src/jw-instances.ts）。
+        /// 實際用的 port 只記在這個 Revit 的記憶體（ActivePort），不寫回共用的 config.json，
+        /// 否則幾個 Revit 會互相蓋掉設定。上次異常關閉殘留在 HTTP.sys 的 port 也會被當成佔用、直接跳過。
+        /// </summary>
+        public const int PortSearchCount = 10;
+
+        /// <summary>目前這個 Revit 的 MCP 服務實際在用的 port；服務沒開時是 0。</summary>
+        public static int ActivePort { get; private set; }
+
+        private static int FindFreePort(int basePort)
+        {
+            int[] busy;
+            try
+            {
+                busy = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties()
+                    .GetActiveTcpListeners()
+                    .Select(ep => ep.Port)
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                // GetActiveTcpListeners() 在部分 Windows 版本會拋例外（同 SocketService 的 port 預檢查），
+                // 查不到就用設定的 port，佔用與否交給 StartAsync 原本的處理
+                Logger.Info($"port 檢查不可用（{ex.GetType().Name}），直接用 {basePort}");
+                return basePort;
+            }
+
+            for (int port = basePort; port < basePort + PortSearchCount; port++)
+            {
+                if (!busy.Contains(port)) return port;
+            }
+            return -1;
+        }
+
+        /// <summary>複製一份設定、只換 port，給這個 Revit 的 SocketService 用（共用設定不動）。</summary>
+        private static ServiceSettings CopySettingsWithPort(ServiceSettings source, int port)
+        {
+            return new ServiceSettings
+            {
+                ConfigVersion = source.ConfigVersion,
+                Host = source.Host,
+                Port = port,
+                IsEnabled = source.IsEnabled,
+                ReconnectInterval = source.ReconnectInterval,
+                CommandTimeout = source.CommandTimeout,
+                ExclusiveLock = source.ExclusiveLock,
+                CameraManager = source.CameraManager,
+            };
         }
 
         /// <summary>
@@ -952,8 +1039,20 @@ namespace RevitMCP
                     return;
                 }
 
-                // 建立 Socket 服務
-                _socketService = new SocketService(settings);
+                int port = FindFreePort(settings.Port);
+                if (port < 0)
+                {
+                    string msg = $"port {settings.Port}～{settings.Port + PortSearchCount - 1} 全部被佔用，MCP 服務沒有啟動。\n\n" +
+                                 "可能是開了太多個 Revit，或上次異常關閉的殘留（可執行 scripts\\release-port.ps1）。";
+                    Logger.Error(msg);
+                    TaskDialog.Show("MCP 服務", msg);
+                    return;
+                }
+
+                // 建立 Socket 服務（用只換了 port 的複本，見 PortSearchCount 的註解）
+                _socketService = new SocketService(CopySettingsWithPort(settings, port));
+                ActivePort = port;
+                Logger.Info($"MCP 服務使用 port {port}");
 
                 // 訂閱命令接收事件
                 _socketService.CommandReceived += OnCommandReceived;
@@ -983,6 +1082,7 @@ namespace RevitMCP
                     _socketService.Stop();
                     _socketService = null;
                 }
+                ActivePort = 0;
 
                 var settings = ConfigManager.Instance.Settings;
                 settings.IsEnabled = false;

@@ -280,4 +280,90 @@ export class RevitSocketClient {
     private generateRequestId(): string {
         return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
+
+    /** JW 本機修改（2026-10-26）：目前連（或要連）的 port */
+    getPort(): number {
+        return this.port;
+    }
+
+    /**
+     * JW 本機修改（2026-10-26）：改連另一個 Revit（另一個 port），給 switch_revit_instance 用。
+     * 先 disconnect()（標記主動斷線、清掉重連 timer，舊連線的 'close' 不會把舊 Revit 的鎖搶回來），
+     * 再連新的；新的連不上就連回原本的 port，不讓 AI 斷在半空中。
+     * 注意：斷線那一刻原本那個 Revit 的獨占鎖就放掉了，連回去之前可能被別的 client 先搶到。
+     */
+    async switchPort(port: number): Promise<void> {
+        if (port === this.port && this.isConnected()) {
+            return;
+        }
+        const previous = this.port;
+        this.disconnect();
+        this.port = port;
+        try {
+            await this.connect();
+        } catch (error) {
+            this.disconnect();
+            this.port = previous;
+            try {
+                await this.connect();
+            } catch {
+                // 原本的也連不上：保持斷線，下一次呼叫工具時 index.ts 會再試著連
+            }
+            throw error;
+        }
+    }
+}
+
+/**
+ * JW 本機修改（2026-10-26）：開一條短連線去問某個 port 上的 Revit 是誰（get_instance_info），問完就關。
+ * 給 list_revit_instances 用，不碰 RevitSocketClient 的主連線。
+ * 回傳 status：ok（問到了）／locked（被別的 AI client 佔用，Revit 回 409）／no-service（沒有 Revit 在聽）／error。
+ */
+export function probeRevitInstance(
+    port: number,
+    clientName: string,
+    timeoutMs: number = 8000
+): Promise<{ status: "ok" | "locked" | "no-service" | "error"; data?: any; error?: string }> {
+    return new Promise((resolve) => {
+        let settled = false;
+        const finish = (result: { status: "ok" | "locked" | "no-service" | "error"; data?: any; error?: string }) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            try { socket.terminate(); } catch { /* ignore */ }
+            resolve(result);
+        };
+
+        const requestId = `probe_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const socket = new WebSocket(`ws://localhost:${port}/?client=${encodeURIComponent(clientName + "-list")}`);
+        const timer = setTimeout(() => finish({ status: "error", error: "逾時（Revit 可能正在忙，例如開檔中）" }), timeoutMs);
+
+        socket.on("open", () => {
+            socket.send(JSON.stringify({ CommandName: "get_instance_info", Parameters: {}, RequestId: requestId }));
+        });
+        socket.on("message", (data: WebSocket.Data) => {
+            try {
+                const raw = JSON.parse(data.toString());
+                if (raw.RequestId !== requestId) return;
+                if (raw.Success) {
+                    finish({ status: "ok", data: raw.Data });
+                } else {
+                    finish({ status: "error", error: raw.Error || "命令失敗（可能是舊版外掛，沒有 get_instance_info）" });
+                }
+            } catch (e) {
+                finish({ status: "error", error: `回應解析失敗：${e instanceof Error ? e.message : String(e)}` });
+            }
+        });
+        socket.on("error", (err: any) => {
+            const message = err instanceof Error ? err.message : String(err);
+            if (err?.code === "ECONNREFUSED") {
+                finish({ status: "no-service" });
+            } else if (message.includes("409")) {
+                finish({ status: "locked", error: "已被另一個 AI 連線佔用" });
+            } else {
+                finish({ status: "error", error: message });
+            }
+        });
+        socket.on("close", () => finish({ status: "error", error: "連線被關閉" }));
+    });
 }

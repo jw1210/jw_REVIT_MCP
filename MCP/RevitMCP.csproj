@@ -27,4 +27,9 @@
     <Resource Include="Resources\icon-32-off.png" />
   </ItemGroup>
 
+  <!-- JW 本機修改（2026-10-26）：press_plugin_button 的允許清單，編進 DLL 就不用另外部署 -->
+  <ItemGroup>
+    <EmbeddedResource Include="jw-local\plugin-buttons.json" LogicalName="RevitMCP.PluginButtons.json" />
+  </ItemGroup>
+
 </Project>

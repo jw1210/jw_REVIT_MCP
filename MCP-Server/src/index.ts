@@ -17,6 +17,8 @@ import {
 import { RevitSocketClient } from "./socket.js";
 import { registerRevitTools, executeRevitTool } from "./tools/revit-tools.js";
 import { listAppResources, readAppResource } from "./apps/register-apps.js";
+// JW 本機修改（2026-10-26）：多個 Revit 同時開時的列出／切換
+import { isInstanceTool, handleInstanceTool } from "./jw-instances.js";
 
 // MCP Server Instance
 const server = new Server(
@@ -71,6 +73,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   console.error(`[MCP Server] Arguments:`, JSON.stringify(request.params.arguments, null, 2));
 
   try {
+    // JW 本機修改（2026-10-26）：list_revit_instances／switch_revit_instance 在這裡先處理，
+    // 不走下面「先連 8964」那段——8964 上沒有 Revit 時也要能列出、切到別的 port。
+    if (isInstanceTool(request.params.name)) {
+      revitClient.clientName = server.getClientVersion()?.name || revitClient.clientName;
+      const instanceResult = await handleInstanceTool(
+        request.params.name,
+        request.params.arguments || {},
+        revitClient
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(instanceResult, null, 2) }],
+      };
+    }
+
     // Check Revit Connection
     if (!revitClient.isConnected()) {
       // 取得目前 AI 客戶端名稱（MCP initialize 的 clientInfo.name），連線時一併回報給 Revit add-in

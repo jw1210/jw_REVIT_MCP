@@ -1,0 +1,51 @@
+{
+  "_說明": "JW 本機修改（2026-10-26）：press_plugin_button 只能按這份清單裡的按鈕。編進 RevitMCP.dll（csproj 的 EmbeddedResource），改完要重新編譯部署才生效。button 是外掛程式裡 PushButtonData 的第一個參數；tab／panel 要跟外掛 ribbon 程式碼一字不差。",
+  "plugins": [
+    {
+      "plugin": "TilePlanner",
+      "source": "500_Project/0001_REVIT_tiles/TilePlanner/App.cs",
+      "tab": "磁磚計畫",
+      "panel": "磁磚工具",
+      "buttons": [
+        { "id": "tile.create_plan", "button": "CreateTilePlan", "label": "建立磁磚計畫", "interaction": "需要點選", "note": "選牆面、樓板後產生 3D 磁磚計畫" },
+        { "id": "tile.preview_plan", "button": "TilePlanPreview", "label": "預覽磁磚計畫", "interaction": "會開視窗", "note": "預覽模式，調整方案與分區後確認套用" },
+        { "id": "tile.toggle_grid", "button": "ToggleGridCommand", "label": "顯示/隱藏網格", "interaction": "直接執行", "note": "切換磁磚切割輔助綠線" },
+        { "id": "tile.toggle_parts", "button": "TogglePartsVisibility", "label": "顯示/隱藏零件", "interaction": "直接執行", "note": "切換原主體與磁磚零件" },
+        { "id": "tile.corner_join", "button": "CornerJoin", "label": "轉角接合", "interaction": "需要點選", "note": "點轉角的邊或逐一選 A／B 側零件" },
+        { "id": "tile.make_slope", "button": "MakeSlope", "label": "製作斜率", "interaction": "會開視窗", "note": "平屋頂／樓板洩水坡度，浮動視窗選低邊" },
+        { "id": "tile.align", "button": "AlignTile", "label": "對齊磁磚", "interaction": "需要點選", "note": "先選目標邊緣，再選磁磚邊緣" },
+        { "id": "tile.copy_settings", "button": "CopyTileSettings", "label": "磁磚複製", "interaction": "需要點選", "note": "先點參考物件，再連續點目標，Esc 結束" },
+        { "id": "tile.mirror_settings", "button": "MirrorTileSettings", "label": "磁磚鏡射", "interaction": "需要點選", "note": "同磁磚複製，但會先問翻轉方向" },
+        { "id": "tile.roof_flip", "button": "ToggleRoofExteriorFlip", "label": "屋頂翻面", "interaction": "需要點選", "note": "切換預覽中選取的屋頂表面完成面朝向" },
+        { "id": "tile.stairs", "button": "StairsTile", "label": "樓梯貼磚", "interaction": "會開視窗", "note": "選一座樓梯，浮動視窗預覽" },
+        { "id": "tile.opening_trim", "button": "OpeningTrim", "label": "門窗收邊", "interaction": "會開視窗", "note": "點一面牆，收進該面門窗" },
+        { "id": "tile.type_library", "button": "TileTypeLibrary", "label": "磁磚類型庫", "interaction": "會開視窗", "note": "管理磁磚類型，同步建立 Revit 類型與材質" },
+        { "id": "tile.quantity", "button": "TileQuantity", "label": "磁磚數量計算", "interaction": "會開視窗", "note": "統計片數與面積，可匯出 Excel 或建明細表" }
+      ]
+    },
+    {
+      "plugin": "LaneRamp",
+      "source": "500_Project/0002_REVIT_lane/LaneRamp.Addin/LaneRampApplication.cs",
+      "tab": "車道坡道工具",
+      "panel": "車道",
+      "buttons": [
+        { "id": "lane.create_lane", "button": "LaneRamp_CreateLane", "label": "建立車道", "interaction": "會開視窗", "note": "只裝在 Revit 2020～2024" }
+      ]
+    },
+    {
+      "plugin": "RevitRebar",
+      "source": "500_Project/0006_REVIT_rebar/src/RevitRebar.Addin/App.cs",
+      "tab": "鋼筋建模",
+      "panel": "鋼筋工具",
+      "fallbackTabs": [ "Add-Ins" ],
+      "buttons": [
+        { "id": "rebar.build_rebar", "button": "RevitRebar.BuildRebar", "label": "從圖面建鋼筋", "interaction": "會開視窗", "note": "只裝在 Revit 2024" },
+        { "id": "rebar.build_hosts", "button": "RevitRebar.BuildHosts", "label": "從圖面建柱梁", "interaction": "會開視窗", "note": "只裝在 Revit 2024" },
+        { "id": "rebar.read_drawing", "button": "RevitRebar.ReadDrawing", "label": "讀圖面文字", "interaction": "會開視窗", "note": "只裝在 Revit 2024" }
+      ]
+    }
+  ],
+  "excluded": [
+    { "plugin": "TilePlanner", "button": "RemoveTilePlan", "label": "移除磁磚計畫", "reason": "刪除類，JW 2026-10-26 決定先不放" }
+  ]
+}

@@ -1040,6 +1040,18 @@ namespace RevitMCP.Core
                         result = ClearReviewMarkers(parameters);
                         break;
 
+                    // JW 本機修改（2026-10-26）：代按 JW 自己的外掛按鈕，見 Commands/CommandExecutor.PluginButtons.cs
+                    case "list_plugin_buttons":
+                        result = ListPluginButtons(parameters);
+                        break;
+                    case "press_plugin_button":
+                        result = PressPluginButton(parameters);
+                        break;
+                    // JW 本機修改（2026-10-26）：多個 Revit 同時開時回報自己是誰，見 Commands/CommandExecutor.Instance.cs
+                    case "get_instance_info":
+                        result = GetInstanceInfo(parameters);
+                        break;
+
                     default:
                         throw new NotImplementedException($"未實作的命令: {request.CommandName}");
                 }
