@@ -1051,6 +1051,22 @@ namespace RevitMCP.Core
                     case "get_instance_info":
                         result = GetInstanceInfo(parameters);
                         break;
+                    // JW 本機修改（2026-11-19）：剖面尺寸標註／踏板編號照另一張圖重做，見 Commands/CommandExecutor.StairAnnotations.cs
+                    case "get_view_dimension_references":
+                        result = GetViewDimensionReferences(parameters);
+                        break;
+                    case "get_linked_stairs":
+                        result = GetLinkedStairs(parameters);
+                        break;
+                    case "get_element_faces_in_view":
+                        result = GetElementFacesInView(parameters);
+                        break;
+                    case "create_dimensions_from_references":
+                        result = CreateDimensionsFromReferences(parameters);
+                        break;
+                    case "create_stair_tread_numbers":
+                        result = CreateStairTreadNumbers(parameters);
+                        break;
 
                     default:
                         throw new NotImplementedException($"未實作的命令: {request.CommandName}");

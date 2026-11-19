@@ -70,6 +70,16 @@ namespace RevitMCP.Core
         }
 
         /// <summary>
+        /// JW 本機修改（2026-11-19）：true 時，port 已被佔用（不論是啟動前檢查看到、還是
+        /// HttpListener.Start() 撞到「與電腦上的現有登錄衝突」）一律丟 <see cref="PortConflictException"/>，
+        /// 不殺程式、不動 HTTP.sys、不彈錯誤框，讓 Application.StartMCPService 換下一個 port。
+        /// 原因：兩個 Revit 同時開時 ApplicationInitialized 幾乎同時觸發，兩邊 FindFreePort 都看到
+        /// 同一個 port 空著；佔住它的其實是另一個 Revit，不是上次異常關閉的殘留。
+        /// 佔用判斷在第一個 await 之前，所以衝突時 StartAsync() 回傳的 Task 已經是 Faulted。
+        /// </summary>
+        public bool ConflictMeansNextPort { get; set; }
+
+        /// <summary>
         /// 啟動 WebSocket 伺服器
         /// </summary>
         public async Task StartAsync()
@@ -85,6 +95,11 @@ namespace RevitMCP.Core
                 try
                 {
                     var (occupantPid, occupantName) = GetPortOccupant(_settings.Port);
+                    if (occupantPid != 0 && ConflictMeansNextPort)
+                    {
+                        Logger.Info($"Port {_settings.Port} 被 {occupantName} (PID: {occupantPid}) 佔用，換下一個 port");
+                        throw new PortConflictException(_settings.Port, null);
+                    }
                     if (occupantPid > 0)
                     {
                         Logger.Info($"Port {_settings.Port} 被 {occupantName} (PID: {occupantPid}) 佔用，嘗試自動修復...");
@@ -115,7 +130,7 @@ namespace RevitMCP.Core
                         }
                     }
                 }
-                catch (Exception portCheckEx)
+                catch (Exception portCheckEx) when (!(portCheckEx is PortConflictException))
                 {
                     // GetActiveTcpListeners() 在部分 Windows 版本會拋出 PlatformNotSupportedException
                     // 跳過 Port 檢查，直接嘗試啟動 HttpListener（若 Port 真的被佔用，Start() 會報錯）
@@ -138,6 +153,20 @@ namespace RevitMCP.Core
                 // 成功啟動只記 log，不彈 modal TaskDialog：modal 對話框會阻塞 Revit UI 執行緒，
                 // 在 Core 熱重載情境下會卡住 ExternalEvent 造成命令 8s timeout（見 docs/core-reload-architecture.md §11）。
                 // 啟動結果已於上方 Logger.Info 記錄。收編自 ChimingLu（啟銘）熱重載分支的 UI-thread 安全修正。
+            }
+            catch (PortConflictException)
+            {
+                throw;
+            }
+            catch (HttpListenerException hle) when (ConflictMeansNextPort && (hle.ErrorCode == 183 || hle.ErrorCode == 32))
+            {
+                // JW 本機修改（2026-11-19）：183＝與現有登錄衝突（另一個 Revit 的 HttpListener 先登錄了），
+                // 32＝別的程式直接綁了這個 TCP port。見 ConflictMeansNextPort。
+                _isRunning = false;
+                try { _httpListener?.Close(); } catch { }
+                _httpListener = null;
+                Logger.Info($"Port {_settings.Port} 已被別的程式登錄（HttpListener 錯誤 {hle.ErrorCode}），換下一個 port");
+                throw new PortConflictException(_settings.Port, hle);
             }
             catch (Exception ex)
             {
@@ -712,6 +741,21 @@ namespace RevitMCP.Core
                 Logger.Error($"無法結束進程 {processName} (PID: {pid}): {ex.Message}");
                 return false;
             }
+        }
+    }
+
+    /// <summary>
+    /// JW 本機修改（2026-11-19）：要登錄的 port 已被佔用（通常是同時啟動的另一個 Revit）。
+    /// 只在 <see cref="SocketService.ConflictMeansNextPort"/> 為 true 時丟出，由 Application.StartMCPService 換下一個 port。
+    /// </summary>
+    public class PortConflictException : Exception
+    {
+        public int Port { get; }
+
+        public PortConflictException(int port, Exception? inner)
+            : base($"Port {port} 已被佔用", inner)
+        {
+            Port = port;
         }
     }
 }

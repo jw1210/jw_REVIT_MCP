@@ -24,6 +24,8 @@
 | 2026-10-26 | `MCP/RevitMCP.csproj` | 把 `plugin-buttons.json` 編進 DLL（EmbeddedResource） |
 | 2026-10-26 | `MCP-Server/src/tools/plugin-button-tools.ts`（新） | 兩個工具的定義 |
 | 2026-10-26 | `MCP-Server/src/tools/index.ts` | `pluginButtonTools`、`instanceTools` 註冊到 `full` profile |
+| 2026-11-19 | `MCP/Core/SocketService.cs`、`MCP/Application.cs` | 修兩個 Revit 同時開時搶同一個 port：後登錄的跳「與電腦上的現有登錄衝突」（HttpListener 錯誤 183），或被誤判成 HTTP.sys 殘留去跑 `net stop http`。`ConflictMeansNextPort`＋`PortConflictException`：撞到就換下一個 port，不殺程式、不動 HTTP.sys、不彈框 |
+| 2026-11-19 | `MCP/Core/Commands/CommandExecutor.StairAnnotations.cs`（新）、`MCP/Core/CommandExecutor.cs`、`MCP-Server/src/tools/stair-annotation-tools.ts`（新）、`MCP-Server/src/tools/index.ts` | 樓梯剖面的尺寸標註與踏板編號照另一張圖重做（B3F → B2F）：`get_view_dimension_references`、`get_linked_stairs`、`get_element_faces_in_view`（只讀）、`create_dimensions_from_references`、`create_stair_tread_numbers`。座標用視圖座標 u/v（mm）。尺寸標註黏在連結模型的樓梯面上，不能直接複製（會量回原本那座樓梯），所以是讀原標註的參考 → 找新樓梯對應的面 → 用新參考建。實測：參考 Level 的尺寸標註在剖面上建得出來但不顯示，`create_dimensions_from_references` 建完會檢查並回報 `visibleInView` |
 
 看全部差異：在 repo 根目錄跑 `git status` 與 `git diff`。
 

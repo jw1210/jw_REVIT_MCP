@@ -982,8 +982,12 @@ namespace RevitMCP
         /// <summary>目前這個 Revit 的 MCP 服務實際在用的 port；服務沒開時是 0。</summary>
         public static int ActivePort { get; private set; }
 
-        private static int FindFreePort(int basePort)
+        /// <summary>從 startPort 往上找第一個空的 port，範圍上限是 basePort + PortSearchCount（不含）。</summary>
+        private static int FindFreePort(int basePort, int startPort)
         {
+            int endPort = basePort + PortSearchCount;
+            if (startPort >= endPort) return -1;
+
             int[] busy;
             try
             {
@@ -996,11 +1000,11 @@ namespace RevitMCP
             {
                 // GetActiveTcpListeners() 在部分 Windows 版本會拋例外（同 SocketService 的 port 預檢查），
                 // 查不到就用設定的 port，佔用與否交給 StartAsync 原本的處理
-                Logger.Info($"port 檢查不可用（{ex.GetType().Name}），直接用 {basePort}");
-                return basePort;
+                Logger.Info($"port 檢查不可用（{ex.GetType().Name}），直接用 {startPort}");
+                return startPort;
             }
 
-            for (int port = basePort; port < basePort + PortSearchCount; port++)
+            for (int port = startPort; port < endPort; port++)
             {
                 if (!busy.Contains(port)) return port;
             }
@@ -1039,26 +1043,42 @@ namespace RevitMCP
                     return;
                 }
 
-                int port = FindFreePort(settings.Port);
-                if (port < 0)
+                // JW 本機修改（2026-11-19）：兩個 Revit 同時開時，兩邊 FindFreePort 可能看到同一個 port 空著，
+                // 後登錄的那個會撞到（「與電腦上的現有登錄衝突」）。撞到就從下一個 port 再找，見 SocketService.ConflictMeansNextPort。
+                int searchFrom = settings.Port;
+                while (true)
                 {
-                    string msg = $"port {settings.Port}～{settings.Port + PortSearchCount - 1} 全部被佔用，MCP 服務沒有啟動。\n\n" +
-                                 "可能是開了太多個 Revit，或上次異常關閉的殘留（可執行 scripts\\release-port.ps1）。";
-                    Logger.Error(msg);
-                    TaskDialog.Show("MCP 服務", msg);
-                    return;
+                    int port = FindFreePort(settings.Port, searchFrom);
+                    if (port < 0)
+                    {
+                        string msg = $"port {settings.Port}～{settings.Port + PortSearchCount - 1} 全部被佔用，MCP 服務沒有啟動。\n\n" +
+                                     "可能是開了太多個 Revit，或上次異常關閉的殘留（可執行 scripts\\release-port.ps1）。";
+                        Logger.Error(msg);
+                        TaskDialog.Show("MCP 服務", msg);
+                        return;
+                    }
+
+                    // 建立 Socket 服務（用只換了 port 的複本，見 PortSearchCount 的註解）
+                    var service = new SocketService(CopySettingsWithPort(settings, port)) { ConflictMeansNextPort = true };
+                    _socketService = service;
+                    ActivePort = port;
+                    Logger.Info($"MCP 服務使用 port {port}");
+
+                    // 訂閱命令接收事件
+                    service.CommandReceived += OnCommandReceived;
+
+                    // 啟動服務（fire-and-forget；port 衝突在第一個 await 之前就判斷完，這裡可以同步看）
+                    System.Threading.Tasks.Task startTask = service.StartAsync();
+                    if (startTask.IsFaulted && startTask.Exception?.InnerException is PortConflictException)
+                    {
+                        service.CommandReceived -= OnCommandReceived;
+                        _socketService = null;
+                        ActivePort = 0;
+                        searchFrom = port + 1;
+                        continue;
+                    }
+                    break;
                 }
-
-                // 建立 Socket 服務（用只換了 port 的複本，見 PortSearchCount 的註解）
-                _socketService = new SocketService(CopySettingsWithPort(settings, port));
-                ActivePort = port;
-                Logger.Info($"MCP 服務使用 port {port}");
-
-                // 訂閱命令接收事件
-                _socketService.CommandReceived += OnCommandReceived;
-
-                // 啟動服務
-                _socketService.StartAsync().ConfigureAwait(false);
 
                 // 更新設定
                 settings.IsEnabled = true;
