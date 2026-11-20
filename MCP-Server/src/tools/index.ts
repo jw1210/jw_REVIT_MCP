@@ -69,6 +69,7 @@ import { materialGraphicsTools } from "./material-graphics-tools.js";
 import { pluginButtonTools } from "./plugin-button-tools.js";
 import { instanceTools } from "./instance-tools.js";
 import { stairAnnotationTools } from "./stair-annotation-tools.js";
+import { sheetCreateTools } from "./sheet-create-tools.js";
 
 /**
  * 診斷與環境層工具：擷取畫面、填充樣式查詢、視圖範圍、連結顯示設定、文件操作、相機位置、材質圖形。
@@ -89,7 +90,7 @@ const DIAGNOSTIC_TOOLS = [
  * Profile 對照表：每個 profile 包含哪些模組
  */
 const PROFILE_MODULES: Record<string, Tool[][]> = {
-    full: [baseTools, wallTools, roomTools, corridorAnalysisTools, visualizationTools, scheduleTools, mepTools, curtainWallTools, smokeExhaustTools, smokeDetectorTools, parallelSectionTools, STAIR_COMPLIANCE_TOOLS, sheetTools, detailComponentTools, openingTypeTools, dimensionTools, dependentViewTools, dwgColumnTools, dwgBeamTools, cadBlockPlacementTools, cadLinkTools, clashTools, doorWindowLegendTools, listSeedsTools, dimensionTypeTools, legendViewTools, structureTools, gradingTools, detailCopyTools, scopeBoxTools, viewCropBoxTools, textNoteTools, titleblockAlignTools, viewCreationTools, viewportPositionTools, crossDocumentTools, legendTools, scaffoldTools, viewDuplicateTools, fillRegionTools, ifcStructuralSyncTools, tagsTools, gridTools, cameraManagerTools, modelReviewTools, areaFormulaTools, numberingTools, pluginButtonTools, instanceTools, stairAnnotationTools],
+    full: [baseTools, wallTools, roomTools, corridorAnalysisTools, visualizationTools, scheduleTools, mepTools, curtainWallTools, smokeExhaustTools, smokeDetectorTools, parallelSectionTools, STAIR_COMPLIANCE_TOOLS, sheetTools, detailComponentTools, openingTypeTools, dimensionTools, dependentViewTools, dwgColumnTools, dwgBeamTools, cadBlockPlacementTools, cadLinkTools, clashTools, doorWindowLegendTools, listSeedsTools, dimensionTypeTools, legendViewTools, structureTools, gradingTools, detailCopyTools, scopeBoxTools, viewCropBoxTools, textNoteTools, titleblockAlignTools, viewCreationTools, viewportPositionTools, crossDocumentTools, legendTools, scaffoldTools, viewDuplicateTools, fillRegionTools, ifcStructuralSyncTools, tagsTools, gridTools, cameraManagerTools, modelReviewTools, areaFormulaTools, numberingTools, pluginButtonTools, instanceTools, stairAnnotationTools, sheetCreateTools],
     architect: [baseTools, wallTools, roomTools, corridorAnalysisTools, visualizationTools, scheduleTools, curtainWallTools, parallelSectionTools, STAIR_COMPLIANCE_TOOLS, sheetTools, detailComponentTools, openingTypeTools, dimensionTools, dependentViewTools, dwgColumnTools, dwgBeamTools, cadLinkTools, doorWindowLegendTools, listSeedsTools, dimensionTypeTools, legendViewTools, gradingTools, detailCopyTools, scopeBoxTools, viewCropBoxTools, textNoteTools, titleblockAlignTools, viewCreationTools, viewportPositionTools, crossDocumentTools, legendTools, scaffoldTools, viewDuplicateTools, fillRegionTools, tagsTools, gridTools, cameraManagerTools, modelReviewTools, areaFormulaTools, numberingTools],
     mep: [baseTools, mepTools, scheduleTools, visualizationTools, smokeExhaustTools, smokeDetectorTools, parallelSectionTools, cadBlockPlacementTools, clashTools, modelReviewTools],
     structural: [baseTools, wallTools, visualizationTools, dwgColumnTools, dwgBeamTools, clashTools, structureTools, gradingTools, ifcStructuralSyncTools, tagsTools, gridTools, modelReviewTools],

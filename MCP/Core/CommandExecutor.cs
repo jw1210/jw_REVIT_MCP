@@ -1067,6 +1067,10 @@ namespace RevitMCP.Core
                     case "create_stair_tread_numbers":
                         result = CreateStairTreadNumbers(parameters);
                         break;
+                    // JW 本機修改（2026-11-20）：新建圖紙並放視圖（可照範本圖紙），見 Commands/CommandExecutor.SheetCreate.cs
+                    case "create_sheet_with_views":
+                        result = CreateSheetWithViews(parameters);
+                        break;
 
                     default:
                         throw new NotImplementedException($"未實作的命令: {request.CommandName}");
